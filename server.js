@@ -54,6 +54,16 @@ app.use(requestLogger);
 // ROUTES
 // ======================
 
+// Root route
+app.get('/', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Welcome to the Newslett API Server',
+    status: 'Operational',
+    docs: 'https://github.com/NexoraNext/newslett-server'
+  });
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({
