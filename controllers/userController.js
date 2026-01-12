@@ -342,9 +342,9 @@ const userController = {
             id: user._id,
             preferences: user.preferences,
             stats: {
-                votesCount: user.votedArticles.size,
-                likesCount: user.likedArticles.length,
-                savesCount: user.savedArticles.length
+                votesCount: user.votedArticles?.size || 0,
+                likesCount: user.likedArticles?.length || 0,
+                savesCount: user.savedArticles?.length || 0
             }
         });
     })

@@ -50,7 +50,8 @@ const userSchema = new mongoose.Schema({
     }],
     votedArticles: {
         type: Map,
-        of: String // 'agree', 'disagree', 'unsure'
+        of: String, // 'agree', 'disagree', 'unsure'
+        default: () => new Map()
     },
     // Stats
     commentsPosted: {
