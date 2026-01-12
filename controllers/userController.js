@@ -229,7 +229,7 @@ const userController = {
 
         return ApiResponse.success(res, 'User data retrieved', {
             id: user._id,
-            displayName: user.displayName,
+            displayName: user.displayName || (user.email?.split('@')[0]) || 'User',
             email: user.email,
             photoUrl: user.photoUrl,
             role: user.role,
