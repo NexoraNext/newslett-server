@@ -118,7 +118,10 @@ userSchema.statics.getOrCreate = async function (deviceId) {
             preferences: {
                 mood: 'neutral',
                 categories: ['general', 'technology']
-            }
+            },
+            votedArticles: new Map(),
+            likedArticles: [],
+            savedArticles: []
         });
     }
 
