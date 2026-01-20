@@ -135,11 +135,17 @@ const newsFetchService = {
         }
 
         // Generate AI content
+        logger.info(`🤖 Generating AI content for: ${article.title.substring(0, 50)}...`);
+        logger.info(`   Using: ${huggingFaceService.isEnabled() ? 'HuggingFace API (Free)' : 'Fallback/Simulation'}`);
+
         const [summary, whyThisMatters, mood] = await Promise.all([
           gemmaApiService.generateSummary(article.title, article.content),
           gemmaApiService.generateWhyThisMatters(article.title, article.content),
           gemmaApiService.classifyMood(article.title, article.content)
         ]);
+
+        logger.info(`✅ AI content generated for: ${article.title.substring(0, 30)}...`);
+        logger.debug(`   Summary: ${summary ? summary.substring(0, 50) + '...' : 'Failed'}`);
 
         // Create new article
         const newsItem = new News({

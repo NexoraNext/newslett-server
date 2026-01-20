@@ -54,6 +54,15 @@ const gemmaApiService = {
    */
   generateWhyThisMatters: async (title, content) => {
     try {
+      // Try HuggingFace API for bias/one-liner logic (experimental mapping)
+      if (huggingFaceService.isEnabled()) {
+        const hfBias = await huggingFaceService.detectBias(`${title} ${content}`);
+        if (hfBias) {
+          logger.info('✅ Why-this-matters generated via HuggingFace API (Bias Analysis)');
+          return `Fact Check: This article is ${hfBias.topLabel}. Importance: It helps understand ${getTopicArea(title)}.`;
+        }
+      }
+
       if (process.env.NODE_ENV === 'development' || !process.env.GEMMA3_API_ENDPOINT) {
         return generateSimulatedWhyThisMatters(title);
       }
