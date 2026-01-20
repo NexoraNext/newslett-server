@@ -77,10 +77,17 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API Routes
+// API Routes - News (original)
 app.use('/api/news', require('./routes/newsRoutes'));
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/comments', require('./routes/commentRoutes'));
+
+// API Routes - Added from backend/
+app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/blogs', require('./routes/blogRoutes'));
+app.use('/api/analytics', require('./routes/analyticsRoutes'));
+app.use('/api/payment', require('./routes/paymentRoutes'));
+app.use('/api/verification', require('./routes/verificationRoutes'));
 
 // ======================
 // ERROR HANDLING
@@ -96,10 +103,7 @@ app.use(errorHandler);
 // DATABASE CONNECTION
 // ======================
 
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-}).then(() => {
+mongoose.connect(process.env.MONGODB_URI).then(() => {
   logger.info('MongoDB connected successfully');
   logger.info(`Connected to DB: ${mongoose.connection.name} at ${mongoose.connection.host}:${mongoose.connection.port}`);
 }).catch(err => {

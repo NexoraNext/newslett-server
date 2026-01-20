@@ -1,29 +1,129 @@
+// User Model - Merged from server/ and backend/
+// Combines Firebase auth, Google OAuth, local auth, premium, and creator features
 const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema({
-    firebaseUid: {
+    // ======================
+    // IDENTITY & AUTH
+    // ======================
+
+    // Basic info
+    name: {
+        type: String,
+        trim: true
+    },
+    displayName: String, // Legacy from server/
+    email: {
         type: String,
         unique: true,
-        sparse: true // Allow nulls for old anonymous users
+        sparse: true,
+        lowercase: true,
+        trim: true
     },
-    email: {
+    password: {
+        type: String,
+        select: false // Not returned by default
+    },
+    avatar: {
+        type: String,
+        default: null
+    },
+    photoUrl: String, // Legacy from server/
+
+    // Firebase Auth (from server/)
+    firebaseUid: {
         type: String,
         unique: true,
         sparse: true
     },
-    deviceId: { // Kept for legacy/migration purposes
+
+    // Google OAuth (from backend/)
+    googleId: {
         type: String,
         unique: true,
-        sparse: true,
-        index: true
+        sparse: true
     },
-    displayName: String,
-    photoUrl: String,
+
+    // Auth provider tracking
+    authProvider: {
+        type: String,
+        enum: ['local', 'google', 'firebase'],
+        default: 'local'
+    },
+
+    // Device ID (legacy from server/)
+    deviceId: {
+        type: String,
+        unique: true,
+        sparse: true
+    },
+
+    // ======================
+    // ROLES & PERMISSIONS
+    // ======================
+
     role: {
         type: String,
-        enum: ['user', 'journalist', 'admin'],
+        enum: ['user', 'journalist', 'admin', 'creator'],
         default: 'user'
     },
+    isAdmin: {
+        type: Boolean,
+        default: false
+    },
+    isCreator: {
+        type: Boolean,
+        default: false
+    },
+
+    // ======================
+    // PREMIUM SUBSCRIPTION
+    // ======================
+
+    isPremium: {
+        type: Boolean,
+        default: false
+    },
+    premiumExpiry: {
+        type: Date,
+        default: null
+    },
+
+    // ======================
+    // CREATOR VERIFICATION
+    // ======================
+
+    isVerified: {
+        type: Boolean,
+        default: false
+    },
+    verificationStatus: {
+        type: String,
+        enum: ['none', 'pending', 'approved', 'rejected'],
+        default: 'none'
+    },
+    certificateUrl: {
+        type: String,
+        default: null
+    },
+    verificationSubmittedAt: Date,
+    verificationReviewedAt: Date,
+    verificationNotes: String,
+
+    // ======================
+    // PROFILE
+    // ======================
+
+    bio: {
+        type: String,
+        maxlength: 500,
+        default: ''
+    },
+
+    // ======================
+    // PREFERENCES (from server/)
+    // ======================
+
     preferences: {
         mood: {
             type: String,
@@ -39,7 +139,11 @@ const userSchema = new mongoose.Schema({
             default: ['general', 'technology', 'science', 'health']
         }
     },
-    // Interaction History
+
+    // ======================
+    // ARTICLE INTERACTIONS (from server/)
+    // ======================
+
     likedArticles: [{
         type: mongoose.Schema.Types.ObjectId,
         ref: 'News'
@@ -53,7 +157,32 @@ const userSchema = new mongoose.Schema({
         of: String, // 'agree', 'disagree', 'unsure'
         default: () => new Map()
     },
-    // Stats
+
+    // ======================
+    // SOCIAL FEATURES (from backend/)
+    // ======================
+
+    followers: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
+    following: [{
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    }],
+    followersCount: {
+        type: Number,
+        default: 0
+    },
+    followingCount: {
+        type: Number,
+        default: 0
+    },
+
+    // ======================
+    // STATS & TIMESTAMPS
+    // ======================
+
     commentsPosted: {
         type: Number,
         default: 0
@@ -61,53 +190,66 @@ const userSchema = new mongoose.Schema({
     lastActiveAt: {
         type: Date,
         default: Date.now
+    },
+    lastLoginAt: {
+        type: Date,
+        default: Date.now
     }
 }, {
     timestamps: true
 });
 
-// Static method to find or create user by Firebase UID
+// ======================
+// INDEXES
+// ======================
+
+userSchema.index({ email: 1 });
+userSchema.index({ googleId: 1 });
+userSchema.index({ firebaseUid: 1 });
+userSchema.index({ verificationStatus: 1 });
+
+// ======================
+// STATIC METHODS
+// ======================
+
+// Find or create user by Firebase UID (from server/)
 userSchema.statics.getOrCreateByFirebase = async function (decodedToken) {
     const { uid, email, name, picture } = decodedToken;
 
     let user = await this.findOne({ firebaseUid: uid });
 
-    if (!user) {
-        // Check if we can link by email (if migrated) - unlikely for anonymous device users but good for future
-        if (email) {
-            user = await this.findOne({ email });
-        }
+    if (!user && email) {
+        user = await this.findOne({ email });
+    }
 
-        if (user) {
-            // Link existing user
-            user.firebaseUid = uid;
-            if (name) user.displayName = name;
-            if (picture) user.photoUrl = picture;
-        } else {
-            // Create new user
-            user = await this.create({
-                firebaseUid: uid,
-                email,
-                displayName: name || 'User',
-                photoUrl: picture,
-                role: 'user',
-                likedArticles: [],
-                savedArticles: [],
-                votedArticles: new Map()
-            });
-        }
+    if (user) {
+        user.firebaseUid = uid;
+        user.authProvider = 'firebase';
+        if (name) user.displayName = user.name = name;
+        if (picture) user.photoUrl = user.avatar = picture;
     } else {
-        // Update metadata on login
-        if (name && user.displayName !== name) user.displayName = name;
-        if (picture && user.photoUrl !== picture) user.photoUrl = picture;
+        user = await this.create({
+            firebaseUid: uid,
+            email,
+            name: name || 'User',
+            displayName: name || 'User',
+            avatar: picture,
+            photoUrl: picture,
+            authProvider: 'firebase',
+            role: 'user',
+            likedArticles: [],
+            savedArticles: [],
+            votedArticles: new Map()
+        });
     }
 
     user.lastActiveAt = new Date();
+    user.lastLoginAt = new Date();
     await user.save();
     return user;
 };
 
-// Legacy method: Get or create by device ID (Deprecated but kept for transition)
+// Legacy method: Get or create by device ID (from server/)
 userSchema.statics.getOrCreate = async function (deviceId) {
     if (!deviceId) throw new Error('Device ID is required');
 
@@ -131,15 +273,37 @@ userSchema.statics.getOrCreate = async function (deviceId) {
     return user;
 };
 
-// Transform output (hide internal fields)
+// ======================
+// VIRTUALS
+// ======================
+
+// Public profile virtual (from backend/)
+userSchema.virtual('publicProfile').get(function () {
+    return {
+        id: this._id,
+        name: this.name || this.displayName,
+        avatar: this.avatar || this.photoUrl,
+        bio: this.bio,
+        isVerified: this.isVerified,
+        followersCount: this.followersCount,
+        followingCount: this.followingCount
+    };
+});
+
+// ======================
+// TRANSFORMS
+// ======================
+
 userSchema.set('toJSON', {
     transform: function (doc, ret) {
         ret.id = ret._id;
         delete ret._id;
         delete ret.__v;
-        delete ret.firebaseUid; // Don't expose internal IDs if not needed
-        // Convert Map to object for JSON
-        ret.votedArticles = Object.fromEntries(doc.votedArticles || new Map());
+        delete ret.firebaseUid;
+        delete ret.password;
+        if (doc.votedArticles) {
+            ret.votedArticles = Object.fromEntries(doc.votedArticles || new Map());
+        }
         return ret;
     }
 });

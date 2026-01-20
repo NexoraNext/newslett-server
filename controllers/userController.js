@@ -205,6 +205,7 @@ const userController = {
     /**
      * GET /api/users/me
      * Get current user's stats and preferences
+     * Auto-creates guest user by device ID if not found
      */
     getMe: asyncHandler(async (req, res) => {
         const firebaseUser = req.user;
@@ -216,9 +217,16 @@ const userController = {
                 .populate('likedArticles', 'title imageUrl')
                 .populate('savedArticles', 'title imageUrl');
         } else if (deviceId) {
+            // Auto-create guest user by device ID if not found
             user = await User.findOne({ deviceId })
                 .populate('likedArticles', 'title imageUrl')
                 .populate('savedArticles', 'title imageUrl');
+
+            if (!user) {
+                // Create a new guest user
+                user = await User.getOrCreate(deviceId);
+                logger.debug('Created new guest user', { deviceId, userId: user._id });
+            }
         } else {
             return ApiResponse.unauthorized(res, 'Authentication required');
         }
@@ -229,10 +237,11 @@ const userController = {
 
         return ApiResponse.success(res, 'User data retrieved', {
             id: user._id,
-            displayName: user.displayName || (user.email?.split('@')[0]) || 'User',
+            displayName: user.displayName || (user.email?.split('@')[0]) || 'Guest',
             email: user.email,
             photoUrl: user.photoUrl,
             role: user.role,
+            isGuest: !user.email && !user.firebaseUid,
             preferences: user.preferences,
             stats: {
                 votesCount: user.votedArticles?.size || 0,
@@ -240,8 +249,8 @@ const userController = {
                 savesCount: user.savedArticles?.length || 0,
                 commentsCount: user.commentsPosted
             },
-            likedArticles: user.likedArticles,
-            savedArticles: user.savedArticles,
+            likedArticles: user.likedArticles || [],
+            savedArticles: user.savedArticles || [],
             createdAt: user.createdAt,
             lastActiveAt: user.lastActiveAt
         });
@@ -301,6 +310,10 @@ const userController = {
             user = await User.findOne({ firebaseUid: firebaseUser.uid });
         } else if (deviceId) {
             user = await User.findOne({ deviceId });
+            if (!user) {
+                // Create guest user if not found
+                user = await User.getOrCreate(deviceId);
+            }
         } else {
             return ApiResponse.unauthorized(res, 'Authentication required');
         }
