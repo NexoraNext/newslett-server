@@ -1,5 +1,6 @@
 const axios = require('axios');
 const { logger } = require('../middleware/logger');
+const huggingFaceService = require('./huggingFaceService');
 
 /**
  * Gemma AI API Service
@@ -11,6 +12,16 @@ const gemmaApiService = {
    */
   generateSummary: async (title, content) => {
     try {
+      // Try HuggingFace API first (FREE, runs on their GPUs)
+      if (huggingFaceService.isEnabled()) {
+        const hfSummary = await huggingFaceService.generateSummary(title, content);
+        if (hfSummary) {
+          logger.info('✅ Summary generated via HuggingFace API');
+          return hfSummary;
+        }
+      }
+
+      // Fallback to Gemma if configured
       if (process.env.NODE_ENV === 'development' || !process.env.GEMMA3_API_ENDPOINT) {
         return generateSimulatedSummary(content);
       }
@@ -75,7 +86,16 @@ const gemmaApiService = {
    */
   classifyMood: async (title, content) => {
     try {
-      // Deterministic classification based on keywords (no AI needed)
+      // Try HuggingFace API for sentiment analysis first
+      if (huggingFaceService.isEnabled()) {
+        const hfMood = await huggingFaceService.classifyMood(`${title} ${content}`);
+        if (hfMood) {
+          logger.info(`✅ Mood classified via HuggingFace API: ${hfMood}`);
+          return hfMood;
+        }
+      }
+
+      // Fallback to deterministic classification based on keywords
       const text = `${title} ${content}`.toLowerCase();
 
       const seriousKeywords = ['death', 'killed', 'war', 'crisis', 'emergency', 'attack', 'disaster', 'terror', 'violence', 'shooting', 'explosion', 'crash'];
@@ -98,6 +118,16 @@ const gemmaApiService = {
    */
   answerQuestion: async (title, content, question) => {
     try {
+      // Try HuggingFace API first (RoBERTa Q&A model)
+      if (huggingFaceService.isEnabled()) {
+        const hfAnswer = await huggingFaceService.answerQuestion(content, question);
+        if (hfAnswer) {
+          logger.info('✅ Question answered via HuggingFace API');
+          return hfAnswer;
+        }
+      }
+
+      // Fallback to Gemma or simulation
       if (process.env.NODE_ENV === 'development' || !process.env.GEMMA3_API_ENDPOINT) {
         return generateSimulatedAnswer(question, content);
       }
