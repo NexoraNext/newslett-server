@@ -10,7 +10,7 @@ const axios = require('axios');
 const { logger } = require('../middleware/logger');
 
 const HF_API_KEY = process.env.HF_API_KEY;
-const HF_BASE_URL = 'https://api-inference.huggingface.co/models';
+const HF_BASE_URL = 'https://router.huggingface.co/hf-inference/models';
 
 // Model endpoints (all FREE tier compatible)
 const MODELS = {
@@ -63,7 +63,8 @@ async function callHuggingFaceAPI(model, payload, retries = 3) {
 
       // Last attempt failed
       if (attempt === retries) {
-        logger.error(`❌ HuggingFace API error for ${model}:`, error.message);
+        const errorDetail = error.response?.data || error.message;
+        logger.error(`❌ HuggingFace API error for ${model}:`, errorDetail);
         throw error;
       }
     }
@@ -89,7 +90,7 @@ const huggingFaceService = {
   generateSummary: async (title, content) => {
     try {
       const text = `${title}. ${content}`.substring(0, 1024); // BART max input
-      
+
       const result = await callHuggingFaceAPI(MODELS.SUMMARIZATION, {
         inputs: text,
         parameters: {
