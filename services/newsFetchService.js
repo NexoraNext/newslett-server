@@ -2,6 +2,7 @@ const axios = require('axios');
 const crypto = require('crypto');
 const News = require('../models/News');
 const gemmaApiService = require('./gemmaApiService');
+const huggingFaceService = require('./huggingFaceService');
 const { logger } = require('../middleware/logger');
 
 /**
