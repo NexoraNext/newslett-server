@@ -5,5 +5,7 @@ node_modules
 firebase-service-account.json
 
 # Local AI models (large files, not tracked in git)
-models/
+# models/  <-- This was ignoring our Mongoose schemas!
+ai-models/
+!models/*.js
 !models/.gitkeep
