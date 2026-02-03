@@ -2,11 +2,45 @@ const axios = require('axios');
 const { logger } = require('../middleware/logger');
 const huggingFaceService = require('./huggingFaceService');
 
+// Brain Architecture imports (optional, for new architecture)
+let brainService = null;
+try {
+  brainService = require('./brainService');
+} catch (e) {
+  // Brain service not available, using legacy mode
+}
+
 /**
  * Gemma AI API Service
  * Handles all AI-related operations with caching and fallbacks
+ * 
+ * BRAIN ARCHITECTURE: When USE_BRAIN_ARCHITECTURE=true, this service
+ * delegates to brainService which uses:
+ * - Phi-2 for decision making (PROCESS/SKIP/CACHE)
+ * - Qwen 2.5 for multilingual translation
+ * - BART/RoBERTa/MiniLM for heavy lifting
+ * 
+ * Legacy mode is maintained for backward compatibility.
  */
 const gemmaApiService = {
+  /**
+   * Check if brain architecture is enabled
+   */
+  useBrain: () => {
+    return brainService && brainService.isEnabled();
+  },
+
+  /**
+   * Process an article through the brain (new architecture)
+   * Returns processed result with summary, mood, etc.
+   */
+  processWithBrain: async (article) => {
+    if (!gemmaApiService.useBrain()) {
+      return null;
+    }
+    return brainService.processArticle(article);
+  },
+
   /**
    * Generate ultra-short summary (50-120 words)
    */
@@ -321,7 +355,7 @@ function generateSimulatedAnswer(question, content) {
     return `Based on the article: ${relevantSentence.trim()}.`;
   }
 
-  return "The article doesn't directly address this question, but provides related context that might be helpful.";
+  return "I couldn't find a direct answer to that specific question in the article text, but based on the context, it seems to be related to the general topic.";
 }
 
 function rewriteSimulated(comment) {

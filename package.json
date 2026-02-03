@@ -4,8 +4,9 @@
   "description": "Backend for Newslet app with news aggregation and summarization",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "prestart": "lsof -t -i:3000 | xargs kill -9 2>/dev/null || true",
+    "start": "python3 python-tts/tts_server.py & node server.js",
+    "dev": "python3 python-tts/tts_server.py & nodemon server.js",
     "test": "jest --coverage",
     "test:watch": "jest --watch"
   },

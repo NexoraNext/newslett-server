@@ -14,7 +14,8 @@ router.get('/:articleId', commentController.getComments);
 router.post('/:articleId', commentController.addComment);
 
 // POST rewrite comment politely (AI-assisted)
-router.post('/:id/rewrite', commentController.rewritePolitely);
+// POST rewrite comment politely (AI-assisted) - DISABLED
+// router.post('/:id/rewrite', commentController.rewritePolitely);
 
 // DELETE soft delete comment
 router.delete('/:id', commentController.deleteComment);

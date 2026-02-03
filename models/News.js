@@ -131,6 +131,17 @@ const NewsSchema = new mongoose.Schema({
   },
   processedAt: {
     type: Date
+  },
+
+  // Brain Architecture fields
+  brainDecision: {
+    type: String,
+    enum: ['PROCESS', 'SKIP', 'CACHE', null],
+    default: null
+  },
+  sourceLanguage: {
+    type: String,
+    default: 'en'
   }
 }, {
   timestamps: true,
@@ -143,7 +154,12 @@ NewsSchema.index({ publishedAt: -1 });
 NewsSchema.index({ category: 1, publishedAt: -1 });
 NewsSchema.index({ mood: 1, publishedAt: -1 });
 NewsSchema.index({ isDailyBrief: 1, dailyBriefDate: -1 });
-NewsSchema.index({ url: 1 }, { unique: true });
+
+// Text index for timeline search (weighted: title most important)
+NewsSchema.index(
+  { title: 'text', summary: 'text', content: 'text' },
+  { weights: { title: 10, summary: 5, content: 1 }, name: 'timeline_search' }
+);
 
 // Virtual for vote percentages
 NewsSchema.virtual('votePercentages').get(function () {

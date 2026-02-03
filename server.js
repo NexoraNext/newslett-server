@@ -79,6 +79,7 @@ app.get('/health', (req, res) => {
 
 // API Routes - News (original)
 app.use('/api/news', require('./routes/newsRoutes'));
+app.use('/api/stories', require('./routes/storiesRoutes')); // Clustered story feed
 app.use('/api/users', require('./routes/userRoutes'));
 app.use('/api/comments', require('./routes/commentRoutes'));
 
@@ -88,6 +89,8 @@ app.use('/api/blogs', require('./routes/blogRoutes'));
 app.use('/api/analytics', require('./routes/analyticsRoutes'));
 app.use('/api/payment', require('./routes/paymentRoutes'));
 app.use('/api/verification', require('./routes/verificationRoutes'));
+app.use('/api/tts', require('./routes/ttsRoutes'));
+
 
 // ======================
 // ERROR HANDLING
@@ -128,6 +131,9 @@ mongoose.connection.on('reconnected', () => {
 // SCHEDULED TASKS
 // ======================
 
+// Import services for scheduled tasks
+const calmRankingService = require('./services/calmRankingService');
+
 // Sync news every 15 minutes (less aggressive than every minute)
 cron.schedule('*/15 * * * *', async () => {
   logger.info('Running scheduled news sync...');
@@ -140,6 +146,17 @@ cron.schedule('*/15 * * * *', async () => {
   }
 });
 
+// Refresh calm ranking scores every hour
+cron.schedule('0 * * * *', async () => {
+  logger.info('Refreshing calm ranking scores...');
+  try {
+    const result = await calmRankingService.refreshAllScores();
+    logger.info(`Refreshed ${result.updated} story scores`);
+  } catch (error) {
+    logger.error('Score refresh failed', error);
+  }
+});
+
 // Daily brief selection at 5 AM
 cron.schedule('0 5 * * *', async () => {
   logger.info('Selecting daily brief articles...');
@@ -148,18 +165,28 @@ cron.schedule('0 5 * * *', async () => {
   } catch (error) {
     logger.error('Daily brief selection failed', error);
   }
+
 });
 
 // ======================
 // START SERVER
 // ======================
 if (require.main === module) {
-  const server = app.listen(PORT, () => {
-    logger.info(`Server running on port ${PORT}`);
-    logger.info(`API URL: http://localhost:${PORT}/api`);
-    logger.info(`Health Check: http://localhost:${PORT}/health`);
-    logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  });
+  const server = app.listen(PORT)
+    .on('listening', () => {
+      logger.info(`Server running on port ${PORT}`);
+      logger.info(`API URL: http://localhost:${PORT}/api`);
+      logger.info(`Health Check: http://localhost:${PORT}/health`);
+      logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    })
+    .on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        logger.error(`Port ${PORT} is already in use. The 'prestart' script should have cleared it, but if you still see this, try: 'lsof -t -i:${PORT} | xargs kill -9'`);
+      } else {
+        logger.error('Server startup error:', err);
+      }
+      process.exit(1);
+    });
 
   // Graceful shutdown
   process.on('SIGTERM', () => {

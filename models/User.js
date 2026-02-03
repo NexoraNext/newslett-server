@@ -203,9 +203,10 @@ const userSchema = new mongoose.Schema({
 // INDEXES
 // ======================
 
-userSchema.index({ email: 1 });
-userSchema.index({ googleId: 1 });
-userSchema.index({ firebaseUid: 1 });
+// ======================
+// INDEXES
+// ======================
+
 userSchema.index({ verificationStatus: 1 });
 
 // ======================

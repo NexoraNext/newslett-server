@@ -92,7 +92,8 @@ const commentController = {
         const comment = await Comment.create({
             articleId,
             userId: user._id,
-            content: content.trim()
+            content: content.trim(),
+            displayName: user.displayName || user.name || 'Anonymous'
         });
 
         // Update user stats
@@ -112,8 +113,11 @@ const commentController = {
     /**
      * POST /api/comments/:id/rewrite
      * AI-assisted polite rewrite of a comment
+     * DISABLED BY USER REQUEST
      */
     rewritePolitely: asyncHandler(async (req, res) => {
+        return ApiResponse.badRequest(res, 'This feature is currently disabled');
+        /*
         const { id } = req.params;
         const deviceId = req.headers['x-device-id'];
 
@@ -155,6 +159,7 @@ const commentController = {
             content: rewrittenContent,
             isRewritten: true
         });
+        */
     }),
 
     /**

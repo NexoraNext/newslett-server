@@ -5,6 +5,9 @@ const { asyncHandler } = require('../middleware/errorHandler');
 const { logger } = require('../middleware/logger');
 const newsFetchService = require('../services/newsFetchService');
 const gemmaApiService = require('../services/gemmaApiService');
+const clusteringService = require('../services/clusteringService');
+const keywordService = require('../services/keywordService');
+const timelineService = require('../services/timelineService');
 
 /**
  * News Controller
@@ -265,11 +268,18 @@ const newsController = {
     const results = await newsFetchService.fetchFromAllSources();
     const savedCount = await newsFetchService.saveArticles(results);
 
-    const message = `Successfully synced ${savedCount} news articles`;
+    // Trigger story clustering after saving articles
+    logger.info('Running story clustering...');
+    const clusteringResults = await clusteringService.processUnclusteredArticles();
+
+    const message = `Successfully synced ${savedCount} articles. Clustering: ${clusteringResults.newStories} new stories, ${clusteringResults.mergedArticles} merged.`;
     logger.info(message);
 
     if (req.manual !== false) {
-      return ApiResponse.success(res, message, { savedCount });
+      return ApiResponse.success(res, message, {
+        savedCount,
+        clustering: clusteringResults
+      });
     }
   }),
 
@@ -314,6 +324,84 @@ const newsController = {
       .lean();
 
     return ApiResponse.success(res, 'Latest summaries retrieved', news);
+  }),
+
+  /**
+   * GET /api/news/:id/timeline
+   * Get historical timeline of related news articles
+   * Fetches from internet (Google News, NewsAPI) and local database
+   */
+  getTimeline: asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const { limit = 20 } = req.query;
+
+    logger.info('Fetching news timeline', { articleId: id, limit });
+
+    // Get the source article
+    const article = await News.findById(id).lean();
+
+    if (!article) {
+      return ApiResponse.notFound(res, 'News article not found');
+    }
+
+    // Extract keywords for search
+    const keywords = keywordService.extract(
+      article.title,
+      article.content || article.description || article.summary
+    );
+
+    if (keywords.length === 0) {
+      return ApiResponse.success(res, 'Timeline retrieved successfully', {
+        title: 'Timeline',
+        keywords: [],
+        sourceArticle: { id, title: article.title },
+        events: [],
+        totalEvents: 0,
+        sources: { internet: 0, local: 0 }
+      });
+    }
+
+    // Generate search query from top keywords
+    const searchQuery = keywords.slice(0, 5).join(' ');
+    const timelineTitle = keywordService.generateTimelineTitle(keywords, article.title);
+
+    logger.info('Timeline search', { keywords: keywords.slice(0, 5), searchQuery });
+
+    // Search Google News (free, no API key needed) + local database
+    const [googleResults, localResults] = await Promise.all([
+      timelineService.searchGoogleNews(searchQuery, parseInt(limit)),
+      timelineService.searchLocalDatabase(article._id, keywords, parseInt(limit))
+    ]);
+
+    // Merge and deduplicate
+    const allEvents = timelineService.mergeAndDeduplicate(googleResults, localResults, article.url);
+
+    // Sort by date (oldest first)
+    allEvents.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    const events = allEvents.slice(0, parseInt(limit));
+
+    logger.info('Timeline results', {
+      googleNews: googleResults.length,
+      local: localResults.length,
+      total: events.length
+    });
+
+    return ApiResponse.success(res, 'Timeline retrieved successfully', {
+      title: timelineTitle,
+      keywords,
+      sourceArticle: {
+        id,
+        title: article.title,
+        publishedAt: article.publishedAt
+      },
+      events,
+      totalEvents: events.length,
+      sources: {
+        internet: googleResults.length,
+        local: localResults.length
+      }
+    });
   })
 };
 

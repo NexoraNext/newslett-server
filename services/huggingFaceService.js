@@ -2,6 +2,14 @@
  * HuggingFace Inference API Service
  * Uses HuggingFace's FREE API for ML models (0 GB local storage!)
  * 
+ * BRAIN ARCHITECTURE ROLE: Heavy Lifting Layer
+ * - BART → Summarization
+ * - RoBERTa → Sentiment / Mood / Q&A
+ * - MiniLM → Embeddings for similarity
+ * 
+ * Decision Making (Phi-2) and Translation (Qwen) are handled by
+ * separate services to maintain isolation.
+ * 
  * Free tier: ~30,000 requests/month, ~30 req/min per model
  * Models run on HuggingFace's GPUs = faster than local inference
  */
@@ -10,15 +18,21 @@ const axios = require('axios');
 const { logger } = require('../middleware/logger');
 
 const HF_API_KEY = process.env.HF_API_KEY;
-const HF_BASE_URL = 'https://router.huggingface.co/hf-inference/models';
+const HF_BASE_URL = 'https://api-inference.huggingface.co/models';
 
-// Model endpoints (all FREE tier compatible)
+// Heavy Lifting Models (all FREE tier compatible)
+// Decision (Phi-2) and Translation (Qwen) are in separate services
 const MODELS = {
-  SUMMARIZATION: 'facebook/bart-large-cnn',           // 0 GB (was 1.6 GB local)
-  SENTIMENT: 'cardiffnlp/twitter-roberta-base-sentiment', // 0 GB (was 500 MB local)
-  QA: 'deepset/roberta-base-squad2',                  // 0 GB (was 500 MB local)
-  BIAS: 'facebook/bart-large-mnli',                   // 0 GB (was 1.6 GB local)
-  EMBEDDINGS: 'sentence-transformers/all-MiniLM-L6-v2' // 0 GB (was 90 MB local)
+  // Summarization - BART-CNN
+  SUMMARIZATION: 'facebook/bart-large-cnn',           // 1.6 GB on HF GPU
+  // Sentiment/Mood - RoBERTa
+  SENTIMENT: 'cardiffnlp/twitter-roberta-base-sentiment', // 500 MB on HF GPU
+  // Question Answering - RoBERTa-SQuAD
+  QA: 'deepset/roberta-base-squad2',                  // 500 MB on HF GPU
+  // Bias Detection - BART-MNLI (Zero-shot)
+  BIAS: 'facebook/bart-large-mnli',                   // 1.6 GB on HF GPU
+  // Embeddings - MiniLM (for similarity)
+  EMBEDDINGS: 'sentence-transformers/all-MiniLM-L6-v2' // 90 MB on HF GPU
 };
 
 /**
@@ -61,11 +75,23 @@ async function callHuggingFaceAPI(model, payload, retries = 3) {
         continue;
       }
 
+      // Handle 410 Gone (model not available on free tier)
+      if (error.response?.status === 410) {
+        logger.warn(`⚠️ Model ${model} not available on free tier`);
+        return null;
+      }
+
+      // Handle 401 Unauthorized (bad API key)
+      if (error.response?.status === 401) {
+        logger.error(`❌ Invalid HuggingFace API key`);
+        throw error;
+      }
+
       // Last attempt failed
       if (attempt === retries) {
-        const errorDetail = error.response?.data || error.message;
+        const errorDetail = error.response?.data?.error || error.response?.data || error.message;
         logger.error(`❌ HuggingFace API error for ${model}:`, errorDetail);
-        throw error;
+        return null; // Return null instead of throwing to allow fallbacks
       }
     }
   }

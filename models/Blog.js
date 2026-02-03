@@ -111,7 +111,6 @@ blogSchema.pre('save', function (next) {
 
 // Indexes
 blogSchema.index({ author: 1, isPublished: 1 });
-blogSchema.index({ slug: 1 });
 blogSchema.index({ category: 1, isPublished: 1 });
 blogSchema.index({ publishedAt: -1 });
 

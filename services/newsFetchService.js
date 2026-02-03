@@ -5,6 +5,14 @@ const gemmaApiService = require('./gemmaApiService');
 const huggingFaceService = require('./huggingFaceService');
 const { logger } = require('../middleware/logger');
 
+// Brain Architecture integration (optional, for new processing flow)
+let brainService = null;
+try {
+  brainService = require('./brainService');
+} catch (e) {
+  logger.warn('Brain service not available, using legacy processing');
+}
+
 /**
  * Generate a unique ID for each article
  */
@@ -119,10 +127,22 @@ const newsFetchService = {
 
   /**
    * Save articles to database with AI processing
+   * Uses Brain Architecture when enabled for smart decision making
    */
   saveArticles: async (articles) => {
     try {
       let savedCount = 0;
+      let skippedCount = 0;
+      let cachedCount = 0;
+
+      // Check if brain architecture is enabled
+      const useBrain = brainService && brainService.isEnabled();
+
+      if (useBrain) {
+        logger.info('🧠 Brain Architecture ENABLED - Using Phi-2 for smart decisions');
+      } else {
+        logger.info('📦 Using legacy AI processing (brain disabled)');
+      }
 
       for (const article of articles) {
         if (!article.title || !article.url) continue;
@@ -135,18 +155,58 @@ const newsFetchService = {
           continue;
         }
 
-        // Generate AI content
-        logger.info(`🤖 Generating AI content for: ${article.title.substring(0, 50)}...`);
-        logger.info(`   Using: ${huggingFaceService.isEnabled() ? 'HuggingFace API (Free)' : 'Fallback/Simulation'}`);
+        let summary = null;
+        let whyThisMatters = null;
+        let mood = null;
+        let brainDecision = 'PROCESS';
+        let sourceLanguage = 'en';
 
-        const [summary, whyThisMatters, mood] = await Promise.all([
-          gemmaApiService.generateSummary(article.title, article.content),
-          gemmaApiService.generateWhyThisMatters(article.title, article.content),
-          gemmaApiService.classifyMood(article.title, article.content)
-        ]);
+        // ===== BRAIN ARCHITECTURE PATH =====
+        if (useBrain) {
+          logger.info(`🧠 Brain analyzing: ${article.title.substring(0, 50)}...`);
 
-        logger.info(`✅ AI content generated for: ${article.title.substring(0, 30)}...`);
-        logger.debug(`   Summary: ${summary ? summary.substring(0, 50) + '...' : 'Failed'}`);
+          const brainResult = await brainService.processArticle({
+            title: article.title,
+            content: article.content,
+            source: article.source,
+            category: article.category
+          });
+
+          brainDecision = brainResult.decision;
+          sourceLanguage = brainResult.sourceLanguage;
+
+          if (brainDecision === 'SKIP') {
+            logger.info(`⏭️ Brain SKIP: ${article.title.substring(0, 40)}...`);
+            skippedCount++;
+            continue;
+          }
+
+          if (brainDecision === 'CACHE') {
+            logger.info(`📋 Brain CACHE: ${article.title.substring(0, 40)}...`);
+            cachedCount++;
+            continue;
+          }
+
+          // PROCESS - use brain results
+          summary = brainResult.summary;
+          mood = brainResult.mood;
+          whyThisMatters = brainResult.whyThisMatters;
+
+          logger.info(`✅ Brain PROCESS: ${article.title.substring(0, 40)}... (${brainResult.processingTime}ms)`);
+        }
+        // ===== LEGACY PATH =====
+        else {
+          logger.info(`🤖 Generating AI content for: ${article.title.substring(0, 50)}...`);
+          logger.info(`   Using: ${huggingFaceService.isEnabled() ? 'HuggingFace API (Free)' : 'Fallback/Simulation'}`);
+
+          [summary, whyThisMatters, mood] = await Promise.all([
+            gemmaApiService.generateSummary(article.title, article.content),
+            gemmaApiService.generateWhyThisMatters(article.title, article.content),
+            gemmaApiService.classifyMood(article.title, article.content)
+          ]);
+
+          logger.info(`✅ AI content generated for: ${article.title.substring(0, 30)}...`);
+        }
 
         // Create new article
         const newsItem = new News({
@@ -163,6 +223,8 @@ const newsFetchService = {
           whyThisMatters,
           mood,
           aiProcessed: true,
+          brainDecision,
+          sourceLanguage,
           processedAt: new Date(),
           previousVersionHash: crypto.createHash('md5').update(article.content || '').digest('hex')
         });
@@ -173,8 +235,8 @@ const newsFetchService = {
         logger.debug(`Saved article: ${article.title.substring(0, 50)}...`);
       }
 
-      logger.info(`Saved ${savedCount} new articles`);
-      return savedCount;
+      logger.info(`📊 Processing complete: ${savedCount} saved, ${skippedCount} skipped, ${cachedCount} cached`);
+      return { savedCount, skippedCount, cachedCount };
     } catch (error) {
       logger.error('Failed to save articles', error);
       throw error;
